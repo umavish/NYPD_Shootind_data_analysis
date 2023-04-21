@@ -1,1 +1,1 @@
-# NYPD_Shootind_data_analysis
+# NYPD_Shooting_data_analysis
