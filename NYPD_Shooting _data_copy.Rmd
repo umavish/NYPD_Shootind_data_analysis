@@ -1,0 +1,315 @@
+---
+title: "NYPD_Shooting_Incident_Data"
+author: 
+date: "2023-04-08"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This data set contains information about every shooting that happened in New York city from year 2006 to 2021. Each row corresponds to one shooting incident. It contains information about location of incident, Date, Time, Precinct, Statistical murder flag and details about Perpetrators(Age, Sex, Race) and Victims(Age, Sex, Race). This report illustrates the steps involved in Data Science process using this data set.   
+
+
+
+## Step 0: Import libaries 
+
+```{r }
+#remotes::install_cran("tidyverse")
+#install.packages("tidyverse")
+#install.packages('gridExtra')
+library(tidyverse)
+library(lubridate)
+library(gridExtra)
+```
+
+## Step 1: Loding Data into a variable named df
+
+```{r }
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+
+df <- read.csv(url_in)
+```
+
+## Step 2: Tidying and Transforming Data
+
+A copy of df is stored in df_copy. All tidying and transforming will be done on this data frame. So we will not lose the original data. 
+
+```{r }
+df_copy <- df
+head(df_copy)
+```
+### Total number of rows and columns
+
+```{r}
+nrow(df_copy)
+ncol(df_copy)
+```
+
+
+### Droping some columns that are nor needed
+
+```{r }
+df_copy <- df_copy %>% 
+  select(-c(JURISDICTION_CODE,X_COORD_CD,Y_COORD_CD,Latitude,Longitude,Lon_Lat))
+```
+
+### Changing the attributes of the data set to appropriate Data Types 
+
+```{r }
+df_copy <- df_copy %>% mutate(OCCUR_DATE=mdy(OCCUR_DATE))
+df_copy$OCCUR_TIME = as.character(df_copy$OCCUR_TIME)
+df_copy$BORO = as.factor(df_copy$BORO)
+df_copy$PRECINCT = as.factor(df_copy$PRECINCT)
+df_copy$STATISTICAL_MURDER_FLAG = as.logical(df_copy$STATISTICAL_MURDER_FLAG)
+df_copy$PERP_AGE_GROUP = as.factor(df_copy$PERP_AGE_GROUP)
+df_copy$PERP_SEX = as.factor(df_copy$PERP_SEX)
+df_copy$PERP_RACE = as.factor(df_copy$PERP_RACE)
+df_copy$VIC_AGE_GROUP = as.factor(df_copy$VIC_AGE_GROUP)
+df_copy$VIC_SEX = as.factor(df_copy$VIC_SEX)
+df_copy$VIC_RACE = as.factor(df_copy$VIC_RACE)
+
+```
+
+### Renaming some column names
+
+```{r }
+df_copy<- df_copy%>%
+     rename(DATE = 'OCCUR_DATE', TIME = 'OCCUR_TIME' )
+```
+
+
+### Frequency table for all the variables in this dataset
+
+```{r }
+df_copy_subset <- df_copy %>% select(-c(INCIDENT_KEY,DATE,TIME))
+summary_stats <- mapply(table, df_copy_subset); summary_stats
+```
+
+### Dealing with inaccurate data
+
+In the column perpetrator Age_Group we can see that the age group 1020, 224 and 940 are not right. So replacing those values with unknown
+
+```{r }
+df_copy$PERP_AGE_GROUP[df_copy$PERP_AGE_GROUP == 1020 | df_copy$PERP_AGE_GROUP == 224 | 
+                         df_copy$PERP_AGE_GROUP == 940] <-  'UNKNOWN'
+```
+
+
+### Percentage of missing data in each column
+
+```{r }
+Percentage_missing_data<-colMeans(df_copy_subset == 'UNKNOWN' | df_copy_subset == '')*100
+Column_names <- c()
+Per_missing <- c()
+for(i in names(Percentage_missing_data)){
+   Column_names <- append(Column_names, i)
+}
+for(j in Percentage_missing_data){
+    Per_missing <- append(Per_missing, round(j, digits = 2))
+}
+df_Per_missing <- data.frame(dataset_column_names=Column_names,
+                             Pecentage_missing=Per_missing)
+ggplot(data = df_Per_missing, aes(y = dataset_column_names, x = Pecentage_missing)) +
+  geom_bar(stat = 'identity')
+
+  
+
+```
+
+We can see that a lot of data is missing in perpetrator related columns and location. It may be because most of the times perpetrators run away and police department couldn't trace them. 
+
+## Step 3: Visualizations and Analysis
+
+### Q1) Number of incidents happened in each borough
+
+```{r}
+# Bar chart of shooting incidents happened in each borough
+ggplot(data = df_copy, aes(x = BORO)) +
+  geom_bar()+
+  geom_text(aes(label =after_stat(count)), stat = "count", vjust = 1.5, colour ="white")+ 
+  ylab("Count of Shooting Incidents")
+```
+Shooting happened in all the boroughs. Brooklyn and Bronx area has highest incidents. Police department must be more vigilant in these area.
+
+### Q2) Age and Sex of Perpetrators involved in shooting
+
+
+```{r}
+# Bar chart for Perpetrators Age group and Sex
+df_copy_Perp_Age <- filter(df_copy, PERP_AGE_GROUP != "UNKNOWN")
+df_copy_Perp_Age <- filter(df_copy_Perp_Age, PERP_AGE_GROUP != "")
+df_copy_Perp_Age_sex <- filter(df_copy_Perp_Age, PERP_SEX != 'U')
+
+ggplot(data = df_copy_Perp_Age_sex, aes(x = PERP_AGE_GROUP, fill = factor(PERP_SEX, 
+                         levels = c("F", "M"),
+                         labels = c("Female", 
+                                    "Male")))) +
+  geom_bar()+
+  labs( fill = "PERP_SEX")+
+  ylab("Number of Perpetrators") +
+  ggtitle("Number of Perpetrators in each Age Group")
+
+# Bar chart for Victims Age group and Sex
+
+df_copy_Vict_Age <- filter(df_copy, VIC_AGE_GROUP != "UNKNOWN")
+df_copy_Vict_Age_sex <- filter(df_copy_Vict_Age, VIC_SEX != 'U')
+
+ggplot(data = df_copy_Vict_Age_sex, aes(x = VIC_AGE_GROUP, fill = factor(VIC_SEX, 
+                         levels = c("F", "M"),
+                         labels = c("Female", 
+                                    "Male")))) +
+  geom_bar()+
+  labs( fill = "VIC_SEX")+ylab("Number of Victims")+
+  ggtitle("Number of Victims in each Age Group")
+  
+```
+Both the Perpetrators and victims involved in the incident are middle aged from 18-44 and men are behind the vast majority of shooting incidents. 
+
+
+### Q3) Lets see the percentage of incidents happened in each Race
+
+```{r}
+# Percentage pie plot for Perpetrator in each race
+df_copy_PERP_RACE <- dplyr::count(df_copy, PERP_RACE) 
+df_copy_PERP_RACE$Percent_PERP_RACE <- 
+  round((df_copy_PERP_RACE$n/sum(df_copy_PERP_RACE$n)*100),digits = 2)
+
+  ggplot(df_copy_PERP_RACE, aes(x = "", y = Percent_PERP_RACE, fill = PERP_RACE)) +
+  geom_col(color = "black") +
+  coord_polar(theta = "y")+
+  
+  geom_text(aes(x = 1.1,label=Percent_PERP_RACE), position = position_stack(vjust = 0.5))
+  
+ # Percentage pie plot for Victim in each race 
+df_copy_VIC_RACE <- dplyr::count(df_copy, VIC_RACE) 
+df_copy_VIC_RACE$Percent_VIC_RACE <- 
+  round((df_copy_VIC_RACE$n/sum(df_copy_VIC_RACE$n)*100),digits = 2)
+
+  ggplot(df_copy_VIC_RACE, aes(x = "", y = Percent_VIC_RACE, fill = VIC_RACE)) +
+  geom_col(color = "black") +
+  coord_polar(theta = "y")+
+
+  geom_text(aes(x = 1.2,label=Percent_VIC_RACE), position = position_stack(vjust = 0.5))
+
+```
+
+The percentage of African Americans are more involved in shooting incidents. Here we can see almost 43% of the data regrading perpetrators race is missing. Lets see who are the victims of these missing perpetrators. 
+
+
+### Q4) In perpetrators there is so much missing information. For this missing information who are the victims. 
+
+```{r}
+# Bar plot of Perpetrator VS number of victims in each race 
+ggplot(data = df_copy, aes(y = PERP_RACE, fill = factor(VIC_RACE))) +
+  geom_bar()+
+  labs( fill = "VIC_RACE")+
+  theme(legend.title = element_text(size = 7), 
+               legend.text = element_text(size = 7),axis.text.y =element_text(size=7),
+        legend.position="bottom")+
+  scale_fill_discrete(labels=c('AMER INDIAN','ASIAN','BLACK','BLACK HISPANIC',
+                               'UNKNOWN','WHITE','WHITE HISPANIC'))+
+  xlab("Count of Victims")
+
+```
+
+For the missing perpetrator race data, many victims are African Americans. This missing data might results in bias regarding the race of the perpetrator. 
+
+### Q5) How is the shooting trend going on from year-to-year
+
+```{r}
+# line plot of shooting trend
+df_copy$YEAR <- substr(df_copy$DATE, 1,4)
+df_copy_year<-df_copy %>% count(YEAR)
+ggplot(data=df_copy_year, aes(x=YEAR,y=n, group = 1)) +
+       geom_line()+
+       geom_point()
+
+```
+
+Until 2011 significant shootings happened but after that it got lower pretty good. But from 2020 again there is an increasing trend. Over all we can see that when economy is doing good, shooting is less. Around  the year 2008 there was recession and in 2020 we got covid, inflation..etc, so there is rise in shooting incidents again. If people's economic status is not much disturbed then shooting incidents are less.
+
+### Q6) Which time of the day shooting are happening and how many resulted in murder
+
+
+```{r}
+df_copy$HOURS <- substr(df_copy$TIME, 1,2)
+df_copy_HOURS_SMF <- df_copy %>% 
+  group_by(HOURS)%>%
+  summarise(MURDER_FLAG_SUM=sum(STATISTICAL_MURDER_FLAG,na.rm='TRUE'),
+            MURDER_FLAG_COUNT =n())%>% 
+           
+  select(HOURS,MURDER_FLAG_SUM,MURDER_FLAG_COUNT)%>%
+  ungroup()
+
+ggplot(df_copy_HOURS_SMF,aes(x=HOURS)) + 
+  geom_bar(aes(y=MURDER_FLAG_COUNT),stat="identity",position = "identity", 
+           alpha=.3,fill="blue")+
+  geom_bar(aes(y=MURDER_FLAG_SUM), stat="identity",position = "identity", 
+           alpha=.3, fill="red")+
+  ylab("Total_Incidents and Total_Deaths")+ 
+  scale_color_manual(name='STATISTICAL_MURDER_FLAG',
+                     breaks=c('Total_Incidents', 'Total_Deaths'),
+                     values=c('Total_Incidents'='blue', 'Total_Deaths'='red'))           
+ 
+        
+
+```
+
+We can clearly see in this graph that majority of the shooting incidents happen during night time. It is important to be more careful during dark hours. And the number of incidents that resulted in death is less when compared to total incidents. 
+
+
+### Q7) We saw number of incidents and deaths w.r.t to time and year. Now lets see the relation between number of incidents and deaths in each Precinct
+
+```{r}
+df_copy_YEAR_SMF <- df_copy %>% 
+  group_by(PRECINCT)%>%
+  summarise(NUM_MURDERS=sum(STATISTICAL_MURDER_FLAG,na.rm='TRUE'),
+            NUM_INCIDENTS =n())%>% 
+  select(PRECINCT,NUM_INCIDENTS,NUM_MURDERS)%>%
+  ungroup()
+
+ggplot(df_copy_YEAR_SMF, aes(x=NUM_INCIDENTS, y=NUM_MURDERS)) +
+  geom_point(size=2, shape=23)
+
+
+```
+
+There is nice linear relation between these two variables. Lets do linear model between NUM_INCIDENTS and NUM_MURDERS
+
+## Data Modeling
+
+```{r}
+mod <- lm(NUM_MURDERS ~ NUM_INCIDENTS, data = df_copy_YEAR_SMF) 
+summary(mod)
+```
+```{r}
+df_copy_YEAR_SMF_PRED <-df_copy_YEAR_SMF%>%mutate(pred = predict(mod))
+  ggplot(df_copy_YEAR_SMF_PRED)+geom_point(aes(x=NUM_INCIDENTS,
+                                               y = NUM_MURDERS),color ="blue")+
+  geom_line(aes(x=NUM_INCIDENTS,y=pred),color = "red")
+```
+This graph clearly shows number of shooting incidents is an indicator for number of murders. This model did a good job at predicting. 
+
+## Step 4: Add Bias Identification
+
+### Conclusion
+
+1) Brooklyn and Bronx are densely populated areas and most of the shooting incidents happened in these areas. In this data set there is a column named LOCATION but most of the data is missing. However the lack of data indicates it is difficult to pin point any particular areas. It is better to make law enforcement more in thickly populated areas.
+
+2) According to the data, from 9pm to 1am shooting incidents are increasing and they are decreasing during the morning time. People must be more vigilant during this time.  
+
+3) People in the age group 18-44, mostly belonging to African american men group are more involved in these incidents. But much of the data of perpetrators is missing. So it hard to get to accurate conclusions.
+
+4) People economic status has influence on crime rate. We can see that during years 2013-2019 shooting incidents dropped to significantly low level. This indicates that stability in financial condition reduces crime.   
+
+### Bias 
+
+People from different race like whites, African Americans, Hispanic and Asian might equally be involved in these incidents but the analysis shows a different story altogether. But there is lot of missing data about perpetrators, may be the sources reporting this data hid it because the perpetrator is not African American.
+
+Most of the location details are missing. After analyzing people might come to conclusions that these locations are prime locations of crime and enforce more patrol in those areas but actual crime locations may be completely different. 
+
+I though most of the shooting incidents leads to a murder. But the good new is that the number of incidents that lead to death are much less when compared to total number of incidents. 
